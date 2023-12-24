@@ -6,5 +6,6 @@ urlpatterns = [
     path('brief/<str:stock_id>', req_brief, name='req_brief'),
     path('news', req_news),
     path('best/<str:k>', req_best_k),
-    path('show', show_stock)
+    path('show', show_stock),
+    path('download', get_csv)
 ]

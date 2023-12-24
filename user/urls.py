@@ -15,5 +15,5 @@ urlpatterns = [
     path('balance/<str:user_id>', req_balance),
     path('upload/photo', upload_photo),
     path('getPhoto', req_photo),
-    path('deletefavor', delete_favor)
+    path('deletefavor', delete_favor),
 ]

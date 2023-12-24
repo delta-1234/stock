@@ -1,5 +1,6 @@
 from django.db import models
 
+
 # Create your models here.
 class StockData(models.Model):
     stockId = models.CharField(max_length=20, null=True)
@@ -12,6 +13,7 @@ class StockData(models.Model):
 
     class Meta:
         db_table = 'stockData'
+        unique_together = (('stockId', 'timestamp'),)
 
 
 class StockInfo(models.Model):
@@ -32,4 +34,3 @@ class News(models.Model):
 
     class Meta:
         db_table = 'news'
-

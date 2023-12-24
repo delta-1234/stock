@@ -7,6 +7,7 @@ from user.models import User, StockOfUser, OrderOfUser, FavorOfUser, Images
 from stockData.models import StockData, StockInfo
 import time
 from concurrent.futures import ThreadPoolExecutor
+import cryptocode
 
 
 # Create your views here.
@@ -15,10 +16,11 @@ def register(request):  # 继承请求类
     if request.method == 'POST':  # 判断请求方式是否为 POST（此处要求为POST方式）
         username = request.POST.get('username')
         password = request.POST.get('password')
+        password = cryptocode.encrypt(password, "delta")
         email = request.POST.get('email')
-        users = User.objects.filter(username=username).exists()
+        user = User.objects.filter(username=username)
         balance = 0
-        if users:  # 若用户名重复
+        if user.exists():  # 若用户名重复
             return JsonResponse({'success': False, 'message': "注册失败，用户名重复"})
         else:
             new_user = User(username=username, password=password, email=email, balance=balance)
@@ -34,12 +36,18 @@ def login(request):
         password = request.POST.get('password')
         try:
             user = User.objects.get(username=username)
-            if user.password == password:
-                return JsonResponse({"success": True, "message": "登录成功", "userId": user.id})
+            user_password = cryptocode.decrypt(user.password, "delta")
+            if user_password == password:
+                if user.privilege is None:
+                    privilege = False
+                else:
+                    privilege = True
+                return JsonResponse({"success": True, "message": "登录成功", "userId": user.id, "privilege": privilege})
             else:
-                return JsonResponse({"success": False, "message": "登录失败，密码错误", "userId": user.id})
+                return JsonResponse(
+                    {"success": False, "message": "登录失败，密码错误", "userId": user.id, "privilege": False})
         except User.DoesNotExist:
-            return JsonResponse({"success": False, "message": "登录失败，没有此用户", "userId": ""})
+            return JsonResponse({"success": False, "message": "登录失败，没有此用户", "userId": "", "privilege": False})
     else:
         return JsonResponse({'success': False, 'message': "非POST"})
 
@@ -59,13 +67,15 @@ def update_hold(user_id):
         if (now_time - i.time) <= 300:
             continue
         # 委托已经生效
+        if i.finished:
+            continue
         try:
             data = StockOfUser.objects.get(userId_id=user_id, stockId=i.stockId)
             user = User.objects.get(id=user_id)
             success_time = ((i.time + 300) // 3600) * 3600
             if success_time > close_time:
                 success_time = close_time
-            price = StockData.objects.get(stockId=i.stockId, timestamp=success_time)
+            price = StockData.objects.get(stockId=i.stockId, timestamp=success_time).closingPrice
             if i.buyOrSell:
                 data.holdNum = data.holdNum + i.orderNum
                 data.spendMoney = data.spendMoney + price * i.orderNum
@@ -85,7 +95,8 @@ def update_hold(user_id):
             spend = price * i.orderNum
             new_stock_user = StockOfUser(userId_id=user_id, stockId=i.stockId, holdNum=i.orderNum, spendMoney=spend)
             new_stock_user.save()
-        i.delete()
+        i.finished = True
+        i.save()
 
 
 def req_hold(request, user_id):
@@ -108,22 +119,30 @@ def req_hold(request, user_id):
         new_value = new_price * i.holdNum
         spend_money = i.spendMoney
         delta = new_value - spend_money
-        delta_rate = delta / new_value
-        hold_price = spend_money / i.holdNum
+        if new_value != 0:
+            delta_rate = delta / new_value
+        else:
+            delta_rate = 0
+        if i.holdNum != 0:
+            hold_price = spend_money / i.holdNum
+        else:
+            hold_price = 0
+
         json_data.append({
             "name": name,
             "code": i.stockId,
             "newValue": new_value,
             "delta": delta,
-            "deltaRate": delta_rate,
+            "deltaRate": "{:.2f}".format(delta_rate),
             "hold": i.holdNum,
             "newPrice": new_price,
-            "holdPrice": hold_price
+            "holdPrice": hold_price,
         })
     return JsonResponse(json_data, safe=False)
 
 
 def req_order(request, user_id):
+    update_hold(user_id)
     data = OrderOfUser.objects.filter(userId_id=user_id)
     json_data = []
     for i in data:
@@ -135,16 +154,14 @@ def req_order(request, user_id):
         price = i.price
         size = i.orderNum
         order_time = i.time
-        now_time = int(time.time())
-        if (now_time - order_time) > 300:
-            continue
         json_data.append({
             "name": name,
             "type": order_type,
             "time": order_time,
             "price": price,
             "size": size,
-            "orderId": i.id
+            "orderId": i.id,
+            "finished": i.finished
         })
     return JsonResponse(json_data, safe=False)
 
@@ -182,6 +199,7 @@ def try_order(request):
 
 def delete_order(request):
     order_id = request.POST.get('orderId')
+    print(order_id)
     now_time = int(time.time())
     try:
         order = OrderOfUser.objects.get(id=order_id)
@@ -300,7 +318,6 @@ def upload_photo(request):
 
 def req_photo(request):
     user_id = request.POST.get('userId')
-    print(user_id)
     if Images.objects.filter(userId_id=user_id).exists():
         photo = Images.objects.get(userId_id=user_id)
         image_url = request.build_absolute_uri(photo.image.url)

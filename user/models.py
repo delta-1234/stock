@@ -4,8 +4,8 @@ from django.db import models
 # Create your models here.
 
 class User(models.Model):
-    username = models.CharField(max_length=100, null=True)
-    password = models.CharField(max_length=50, null=True)
+    username = models.CharField(max_length=100, unique=True)
+    password = models.CharField(max_length=100, null=True)
     email = models.CharField(max_length=50, null=True)
     privilege = models.CharField(max_length=20, null=True)
     balance = models.FloatField(default=0)
@@ -40,6 +40,7 @@ class OrderOfUser(models.Model):
     orderNum = models.IntegerField(default=0)
     price = models.FloatField(default=0)
     time = models.IntegerField(default=0)
+    finished = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'order_of_user'

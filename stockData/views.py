@@ -1,4 +1,5 @@
 import concurrent
+import os
 
 from django.http import JsonResponse
 from stockData.models import StockData, StockInfo, News
@@ -9,6 +10,8 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from django.core.cache import cache
+import pandas as pd
+from datetime import datetime
 
 
 # Create your views here.
@@ -344,3 +347,26 @@ def show_stock(request):
         json_data.append(result)
     cache.set('key' + str(page) + '_' + str(num), json_data, 60 * 15)
     return JsonResponse(json_data, safe=False)
+
+
+def check_file_exists(directory, filename):
+    full_path = os.path.join(directory, filename)
+    return os.path.isfile(full_path)
+
+
+def get_csv(request):
+    stock_id = request.POST.get('stockId')
+    current_date = datetime.now()
+    formatted_date = current_date.strftime("%Y_%m_%d")
+    file_path = './media/csv/'
+    file_name = str(stock_id) + '_' + formatted_date + '.csv'
+    url = 'http://127.0.0.1:8000/media/csv/' + file_name
+    if check_file_exists(file_path, file_name):
+        return JsonResponse({'csv_url': url})
+    stock_data = StockData.objects.filter(stockId=stock_id)
+    data = pd.DataFrame(list(stock_data.values()))
+    for index, row in data.iterrows():
+        data.loc[index, 'timestamp'] = datetime.fromtimestamp(data.loc[index, 'timestamp']).strftime('%Y-%m-%d')
+    data.drop('id', axis=1, inplace=True)
+    data.to_csv(file_path + file_name, index=False, encoding='utf-8')
+    return JsonResponse({'csv_url': url})
